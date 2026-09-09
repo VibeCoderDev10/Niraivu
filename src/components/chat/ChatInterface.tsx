@@ -131,6 +131,11 @@ const FormattedMessage: React.FC<{ content: string; onNavigate: (route: string) 
           return <div key={idx} className="h-1.5" />
         }
 
+        // Horizontal Divider
+        if (trimmed === '---' || trimmed === '***' || trimmed === '___') {
+          return <hr key={idx} className="border-slate-800/80 my-2.5" />
+        }
+
         // Heading ### or ## or #
         if (trimmed.startsWith('### ')) {
           return (

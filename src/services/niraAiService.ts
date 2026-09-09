@@ -84,6 +84,12 @@ ${GROUNDED_HELPLINES_SUMMARY}
   1. Tell them to immediately dial **108** or **14446**.
   2. Give clear recovery position instructions.
 
+CRITICAL OUTPUT COMPLETENESS & FORMATTING RULES:
+- ALWAYS complete every sentence and thought fully. NEVER cut off mid-sentence, mid-word, or mid-list.
+- Keep your answers beautifully structured, warm, and readable (around 200 to 350 words). Avoid overwhelming walls of text.
+- Use clean bullet points, bold highlights, and clear section headers (### Header).
+- Always include the relevant website link ([🗺️ Open Find Help Locator](#find-help), [🧪 Try Scenario Challenge](#prevention), or [📚 View Substance Profiles](#learn)).
+
 Tone: Warm, empathetic, human, conversational, reassuring. Speak like an understanding mentor or senior counselor in Tamil Nadu with zero judgment. Always ground your replies in NIRAIVU's verified tools and Tamil Nadu resources.`
 
 /**
@@ -127,7 +133,7 @@ async function callGeminiApi(
       contents,
       generationConfig: {
         temperature: 0.6,
-        maxOutputTokens: 1000,
+        maxOutputTokens: 3500,
       },
     }),
   })
@@ -143,38 +149,84 @@ async function callGeminiApi(
     let fullText = ''
     let buffer = ''
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
 
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
 
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (trimmed.startsWith('data: ')) {
-          const jsonStr = trimmed.replace('data: ', '').trim()
-          if (jsonStr === '[DONE]') continue
-          try {
-            const parsed = JSON.parse(jsonStr)
-            const textChunk = parsed.candidates?.[0]?.content?.parts?.[0]?.text || ''
-            if (textChunk) {
-              fullText += textChunk
-              onChunk!(fullText)
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (trimmed.startsWith('data: ')) {
+            const jsonStr = trimmed.replace('data: ', '').trim()
+            if (jsonStr === '[DONE]') continue
+            try {
+              const parsed = JSON.parse(jsonStr)
+              const textChunk = parsed.candidates?.[0]?.content?.parts?.[0]?.text || ''
+              if (textChunk) {
+                fullText += textChunk
+                onChunk!(fullText)
+              }
+            } catch (e) {
+              // Ignore partial SSE chunks
             }
-          } catch (e) {
-            // Ignore partial SSE chunks
           }
         }
       }
-    }
 
-    if (fullText) return fullText
+      // Flush any trailing buffer data
+      if (buffer.trim()) {
+        const lines = buffer.split('\n')
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (trimmed.startsWith('data: ')) {
+            const jsonStr = trimmed.replace('data: ', '').trim()
+            if (jsonStr !== '[DONE]') {
+              try {
+                const parsed = JSON.parse(jsonStr)
+                const textChunk = parsed.candidates?.[0]?.content?.parts?.[0]?.text || ''
+                if (textChunk) {
+                  fullText += textChunk
+                  onChunk!(fullText)
+                }
+              } catch (e) {
+                // Ignore
+              }
+            }
+          }
+        }
+      }
+
+      if (fullText.trim().length > 30) {
+        return fullText
+      }
+    } catch (streamErr) {
+      console.warn('Streaming error encountered, falling back to non-streaming:', streamErr)
+    }
   }
 
-  // Non-streaming fallback
-  const data = await res.json()
+  // Non-streaming fallback if stream failed or was incomplete
+  const fallbackRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: NIRA_SYSTEM_PROMPT }] },
+      contents,
+      generationConfig: {
+        temperature: 0.6,
+        maxOutputTokens: 3500,
+      },
+    }),
+  })
+
+  if (!fallbackRes.ok) {
+    throw new Error(`Gemini API error: ${fallbackRes.statusText}`)
+  }
+
+  const data = await fallbackRes.json()
   const candidate = data.candidates?.[0]?.content?.parts?.[0]?.text
   if (!candidate) {
     throw new Error('Empty response from Gemini API')
