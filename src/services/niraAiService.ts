@@ -84,7 +84,8 @@ async function callGeminiApi(
     parts: [{ text: userPrompt }],
   })
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`
+  const modelName = import.meta.env.VITE_AI_MODEL || 'gemini-3.6-flash'
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`
 
   const res = await fetch(url, {
     method: 'POST',
