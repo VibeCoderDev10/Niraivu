@@ -12,11 +12,14 @@
     --cyan-500: #06b6d4;
   }
 
+  html,
   body {
     background-color: #080e22;
     color: #f1f5f9;
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
     overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
   }
 }
 

@@ -40,6 +40,8 @@ export const MapLocator: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [selectedCenter, setSelectedCenter] = useState<HelpCenter | null>(null)
 
+  const [viewMode, setViewMode] = useState<'list' | 'map'>('list')
+
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<L.Map | null>(null)
   const markersRef = useRef<L.Marker[]>([])
@@ -141,9 +143,9 @@ export const MapLocator: React.FC = () => {
     }
 
     return () => {
-      // Map instance preserved or cleaned on unmount
+      // Map instance preserved
     }
-  }, [])
+  }, [viewMode])
 
   // Update Map Markers when filteredCenters change
   useEffect(() => {
@@ -302,10 +304,47 @@ export const MapLocator: React.FC = () => {
         </div>
       </div>
 
+      {/* Mobile View Toggle Buttons (Visible only on screens below lg) */}
+      <div className="lg:hidden flex rounded-2xl bg-slate-900/90 p-1.5 border border-slate-800 shadow-lg">
+        <button
+          onClick={() => setViewMode('list')}
+          className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+            viewMode === 'list'
+              ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-slate-950 shadow-md shadow-teal-500/20'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Building2 className="w-4 h-4" />
+          <span>Center Directory ({filteredCenters.length})</span>
+        </button>
+        <button
+          onClick={() => {
+            setViewMode('map')
+            setTimeout(() => {
+              if (mapInstanceRef.current) {
+                mapInstanceRef.current.invalidateSize()
+              }
+            }, 150)
+          }}
+          className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+            viewMode === 'map'
+              ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-slate-950 shadow-md shadow-teal-500/20'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <MapPin className="w-4 h-4" />
+          <span>Interactive Map</span>
+        </button>
+      </div>
+
       {/* Dual Layout: Interactive Map + Center Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Map Column */}
-        <div className="lg:col-span-5 bg-[#0b132b] rounded-2xl border border-slate-800 p-3 shadow-xl sticky top-24">
+        <div
+          className={`lg:col-span-5 bg-[#0b132b] rounded-2xl border border-slate-800 p-3 shadow-xl lg:sticky lg:top-24 ${
+            viewMode === 'map' ? 'block' : 'hidden lg:block'
+          }`}
+        >
           <div className="flex items-center justify-between px-3 py-2 border-b border-slate-800 mb-2">
             <div className="flex items-center gap-2">
               <MapPin className="w-4 h-4 text-teal-400" />
@@ -321,17 +360,21 @@ export const MapLocator: React.FC = () => {
           {/* Map Leaflet Container */}
           <div
             ref={mapContainerRef}
-            className="w-full h-[460px] rounded-xl overflow-hidden shadow-inner border border-slate-800"
+            className="w-full h-[360px] sm:h-[420px] lg:h-[460px] rounded-xl overflow-hidden shadow-inner border border-slate-800"
           />
 
           <div className="mt-3 px-3 py-2 bg-slate-900/60 rounded-xl border border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
-            <span>Click any pin to inspect center details</span>
+            <span>Tap any pin to view center contact</span>
             <span className="text-teal-400 font-medium">OpenStreetMap • Leaflet</span>
           </div>
         </div>
 
         {/* Center List Column */}
-        <div className="lg:col-span-7 space-y-4">
+        <div
+          className={`lg:col-span-7 space-y-4 ${
+            viewMode === 'list' ? 'block' : 'hidden lg:block'
+          }`}
+        >
           <div className="flex items-center justify-between px-1">
             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">
               Showing {filteredCenters.length} Support & Care Centers
