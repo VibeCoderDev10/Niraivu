@@ -10,7 +10,9 @@ import {
   Info,
   User,
   Bot,
-  RefreshCw,
+  Settings,
+  X,
+  Key,
 } from 'lucide-react'
 import { ChatMessage } from '../../types'
 import { generateNiraResponse } from '../../services/niraAiService'
@@ -28,19 +30,19 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     {
       id: 'welcome',
       role: 'assistant',
-      content: `Vanakkam! I am **NIRA**, your confidential awareness and support guide for **Drug-Free Tamil Nadu**.
+      content: `Vanakkam! I'm **NIRA** 👋 
 
-I’m here to provide non-judgmental information on substance abuse risks, evidence-based prevention strategies, how to support friends or family, and locating verified de-addiction centers across Tamil Nadu.
+Think of me as a safe, confidential space where you can talk openly about stress, hostel peer pressure, questions about substance risks, or finding care in Tamil Nadu—with **zero judgment**.
 
-*How can I support you today?*`,
+Whether you're looking out for a friend, feeling pressured yourself, or just want trusted answers, I'm right here in your corner. How are things going today?`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       suggestions: [
         'How can I help a friend who may be using drugs?',
         'I feel pressured by my friends. What should I do?',
-        'Find rehabilitation centers near me.',
+        'Is talking to you really confidential?',
+        'Find rehabilitation centers near me',
         'What are signs that someone may need help?',
         'What should I do in an emergency?',
-        'Can you explain the effects of drug abuse?',
       ],
     },
   ])
@@ -48,6 +50,14 @@ I’m here to provide non-judgmental information on substance abuse risks, evide
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [showSettings, setShowSettings] = useState(false)
+  const [apiKeyInput, setApiKeyInput] = useState(
+    localStorage.getItem('nira_gemini_api_key') || ''
+  )
+  const [isLiveAiActive, setIsLiveAiActive] = useState(
+    Boolean(localStorage.getItem('nira_gemini_api_key') || import.meta.env.VITE_AI_API_KEY)
+  )
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -66,6 +76,17 @@ I’m here to provide non-judgmental information on substance abuse risks, evide
     }
   }, [initialPrompt])
 
+  const handleSaveApiKey = () => {
+    if (apiKeyInput.trim()) {
+      localStorage.setItem('nira_gemini_api_key', apiKeyInput.trim())
+      setIsLiveAiActive(true)
+    } else {
+      localStorage.removeItem('nira_gemini_api_key')
+      setIsLiveAiActive(false)
+    }
+    setShowSettings(false)
+  }
+
   const handleSendMessage = async (textToSend?: string) => {
     const messageContent = (textToSend || input).trim()
     if (!messageContent || isTyping) return
@@ -78,13 +99,14 @@ I’m here to provide non-judgmental information on substance abuse risks, evide
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     }
 
-    setMessages((prev) => [...prev, newUserMessage])
+    const updatedHistory = [...messages, newUserMessage]
+    setMessages(updatedHistory)
     setInput('')
     setIsTyping(true)
 
     try {
-      // Simulate realistic streaming delay
-      const response = await generateNiraResponse(messageContent, messages)
+      // Pass full conversation history for multi-turn conversational context
+      const response = await generateNiraResponse(messageContent, updatedHistory)
 
       setTimeout(() => {
         const assistantMessageId = `assistant-${Date.now()}`
@@ -99,14 +121,14 @@ I’m here to provide non-judgmental information on substance abuse risks, evide
 
         setMessages((prev) => [...prev, newAssistantMessage])
         setIsTyping(false)
-      }, 700)
+      }, 500)
     } catch (error) {
       setIsTyping(false)
       const errorMessage: ChatMessage = {
         id: `err-${Date.now()}`,
         role: 'assistant',
         content:
-          'I apologize, but I encountered a momentary connection glitch. If you are facing an urgent emergency, please call **108** (Tamil Nadu Ambulance) or **14446** (Tele-MANAS) right away.',
+          'I apologize, but I had a momentary glitch. If this is an urgent crisis, please call **108** (Tamil Nadu Ambulance) or **14446** (Tele-MANAS) right away.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       }
       setMessages((prev) => [...prev, errorMessage])
@@ -131,12 +153,12 @@ I’m here to provide non-judgmental information on substance abuse risks, evide
       {
         id: `reset-${Date.now()}`,
         role: 'assistant',
-        content: `Chat session refreshed. How can I assist you with drug awareness, prevention, or recovery support today?`,
+        content: `Chat session refreshed. What would you like to talk about today? I'm right here.`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         suggestions: [
           'How can I help a friend who may be using drugs?',
-          'Find rehabilitation centers near me.',
-          'What are signs that someone may need help?',
+          'I feel pressured by my friends. What should I do?',
+          'Find rehabilitation centers near me',
         ],
       },
     ])
@@ -145,11 +167,11 @@ I’m here to provide non-judgmental information on substance abuse risks, evide
   return (
     <div
       className={`flex flex-col bg-[#0b132b] rounded-2xl border border-slate-800 shadow-2xl overflow-hidden ${
-        isStandalonePage ? 'h-[calc(88vh-80px)] min-h-[580px]' : 'h-[500px]'
+        isStandalonePage ? 'h-[calc(88vh-80px)] min-h-[520px] sm:min-h-[580px]' : 'h-[500px]'
       }`}
     >
       {/* Top Header */}
-      <div className="flex items-center justify-between px-5 py-3.5 bg-slate-900/90 border-b border-slate-800/90 backdrop-blur-md">
+      <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 bg-slate-900/90 border-b border-slate-800/90 backdrop-blur-md">
         <div className="flex items-center gap-3">
           <div className="relative">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-teal-500 via-cyan-400 to-blue-500 p-0.5 flex items-center justify-center shadow-md shadow-teal-500/20">
@@ -161,28 +183,81 @@ I’m here to provide non-judgmental information on substance abuse risks, evide
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-white tracking-tight">NIRA Assistant</h2>
-              <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-400 border border-teal-500/30">
-                Confidential Guide
+              <h2 className="text-sm sm:text-base font-bold text-white tracking-tight">
+                NIRA Assistant
+              </h2>
+              <span
+                className={`text-[9px] sm:text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full border ${
+                  isLiveAiActive
+                    ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/40'
+                    : 'bg-teal-500/10 text-teal-400 border-teal-500/30'
+                }`}
+              >
+                {isLiveAiActive ? 'Live Gemini AI' : 'Trained Conversational Model'}
               </span>
             </div>
-            <p className="text-xs text-slate-400">
-              Awareness • Prevention • Tamil Nadu Care
+            <p className="text-[11px] text-slate-400">
+              Confidential Awareness & Support Guide
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors border border-slate-800 flex items-center gap-1.5"
+            title="Configure AI Model or API Key"
+          >
+            <Settings className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">AI Config</span>
+          </button>
+
           <button
             onClick={handleClearChat}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors border border-slate-800"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors border border-slate-800"
             title="Clear current conversation"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Clear Chat</span>
+            <span className="hidden sm:inline">Reset</span>
           </button>
         </div>
       </div>
+
+      {/* AI Settings Overlay Drawer */}
+      {showSettings && (
+        <div className="bg-slate-900 border-b border-slate-800 p-4 animate-in slide-in-from-top-3 duration-200 text-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-white font-bold">
+              <Key className="w-4 h-4 text-teal-400" />
+              <span>AI Engine Configuration</span>
+            </div>
+            <button
+              onClick={() => setShowSettings(false)}
+              className="p-1 text-slate-400 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <p className="text-slate-400 leading-relaxed">
+            By default, NIRA runs on its high-fidelity **Trained Conversational Model** with Tamil Nadu context and safety guardrails. You can optionally connect your own free **Google Gemini API Key** for unlimited open-domain LLM generation:
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              value={apiKeyInput}
+              onChange={(e) => setApiKeyInput(e.target.value)}
+              placeholder="Paste Google Gemini API Key (e.g. AIzaSy...)"
+              className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-teal-400 font-mono text-xs"
+            />
+            <button
+              onClick={handleSaveApiKey}
+              className="px-4 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs shadow"
+            >
+              Save & Apply
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Messages Scroll Area */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
@@ -195,7 +270,7 @@ I’m here to provide non-judgmental information on substance abuse risks, evide
               className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} space-y-2`}
             >
               <div
-                className={`flex gap-3 max-w-[90%] sm:max-w-[82%] ${
+                className={`flex gap-3 max-w-[92%] sm:max-w-[82%] ${
                   isUser ? 'flex-row-reverse' : 'flex-row'
                 }`}
               >
@@ -220,16 +295,16 @@ I’m here to provide non-judgmental information on substance abuse risks, evide
                       : 'bg-slate-900/90 text-slate-100 border border-slate-800 rounded-tl-none'
                   }`}
                 >
-                  {/* Emergency Banner inside bubble if detected */}
+                  {/* Emergency Alert Header inside bubble */}
                   {message.isEmergency && (
                     <div className="mb-3 p-2.5 rounded-lg bg-rose-900/60 border border-rose-500/40 flex items-start gap-2.5">
                       <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
                       <div>
                         <p className="font-bold text-white text-xs uppercase tracking-wider">
-                          Urgent Medical Alert Detected
+                          Urgent Medical Alert
                         </p>
                         <p className="text-[11px] text-rose-200">
-                          If someone is unconscious or struggling to breathe, do not wait. Call emergency services immediately.
+                          If someone is unconscious or struggling to breathe, do not wait. Call emergency medical dispatch right away.
                         </p>
                         <div className="mt-2 flex flex-wrap gap-2">
                           <a
@@ -250,12 +325,12 @@ I’m here to provide non-judgmental information on substance abuse risks, evide
                     </div>
                   )}
 
-                  {/* Message Content Rendered */}
+                  {/* Rendered Text */}
                   <div className="whitespace-pre-wrap space-y-2 font-normal">
                     {message.content}
                   </div>
 
-                  {/* Message Meta & Action */}
+                  {/* Timestamp & Copy */}
                   <div
                     className={`mt-2 pt-1.5 flex items-center justify-between text-[11px] border-t ${
                       isUser
@@ -287,7 +362,7 @@ I’m here to provide non-judgmental information on substance abuse risks, evide
                 </div>
               </div>
 
-              {/* Prompt suggestions if assistant attached them */}
+              {/* Follow-up Chips */}
               {!isUser && message.suggestions && message.suggestions.length > 0 && (
                 <div className="ml-11 flex flex-wrap gap-1.5 pt-1 max-w-[85%]">
                   {message.suggestions.map((suggestion, idx) => (
@@ -312,7 +387,7 @@ I’m here to provide non-judgmental information on substance abuse risks, evide
               <Bot className="w-4 h-4" />
             </div>
             <div className="bg-slate-900 border border-slate-800 rounded-2xl rounded-tl-none px-4 py-2.5 flex items-center gap-1.5">
-              <span className="text-xs text-teal-400 font-medium mr-1">NIRA is thinking</span>
+              <span className="text-xs text-teal-400 font-medium mr-1">NIRA is typing</span>
               <span className="w-2 h-2 rounded-full bg-teal-400 animate-bounce"></span>
               <span className="w-2 h-2 rounded-full bg-teal-400 animate-bounce [animation-delay:0.2s]"></span>
               <span className="w-2 h-2 rounded-full bg-teal-400 animate-bounce [animation-delay:0.4s]"></span>
@@ -338,7 +413,7 @@ I’m here to provide non-judgmental information on substance abuse risks, evide
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask anything confidentially... (e.g. 'How can I help a friend who may be using drugs?')"
+            placeholder="Ask anything confidentially... (e.g. 'I feel pressured by my friends. What should I do?')"
             className="flex-1 bg-transparent text-sm text-slate-100 placeholder-slate-500 resize-none px-2 py-1.5 focus:outline-none max-h-24"
           />
 
@@ -356,10 +431,10 @@ I’m here to provide non-judgmental information on substance abuse risks, evide
         <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500 px-1">
           <div className="flex items-center gap-1.5">
             <Info className="w-3 h-3 text-teal-400/80" />
-            <span>Confidential educational guidance • In emergency, call 108</span>
+            <span>Confidential awareness guide • In emergency, call 108</span>
           </div>
           <span className="hidden sm:inline text-teal-400/60 font-mono text-[10px]">
-            Demo NLP Engine Active
+            {isLiveAiActive ? 'Gemini 1.5 Flash Connected' : 'Trained Conversational Model'}
           </span>
         </div>
       </div>

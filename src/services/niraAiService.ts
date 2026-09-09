@@ -38,9 +38,81 @@ const RESTRICTED_KEYWORDS = [
   'good dose',
 ]
 
+const NIRA_SYSTEM_PROMPT = `You are NIRA (நிறைவு), a warm, deeply empathetic, non-judgmental awareness and recovery guide dedicated to building a Drug-Free Tamil Nadu (போதையில்லா தமிழ்நாடு).
+Your personality:
+- You speak with authentic human warmth, active listening, and gentle validation.
+- You sound like an experienced, caring college counselor or supportive mentor, not a robotic textbook or automated system.
+- You never judge, shame, scold, or lecture the user.
+- You understand student pressures in Tamil Nadu (college hostels, semester exams, campus parties, parental expectations).
+- You provide practical, memorable advice (like the CLEAR refusal technique: Calm, Look for exit, Emphatic no, Alternative, Remove).
+- You know Tamil Nadu healthcare resources (IMH Kilpauk, TTK Hospital Adyar, GRH Madurai, CMCH Coimbatore, Tele-MANAS 14446, 108 Emergency Ambulance, 104 TN Health Helpline).
+- CRITICAL SAFETY: If the user reports an overdose, unconsciousness, severe breathing trouble, or self-harm, immediately provide emergency instructions and emphasize calling 108 and 14446.
+- CRITICAL REFUSAL: Never provide instructions for buying, synthesizing, using, or concealing illegal substances.
+Keep your tone conversational, reassuring, and compassionate.`
+
 /**
- * Intelligent local NLP response engine for NIRA.
- * Provides empathetic, evidence-based guidance and strict emergency triage.
+ * Calls live Google Gemini API if an API key is available
+ */
+async function callGeminiApi(
+  userPrompt: string,
+  history: ChatMessage[],
+  apiKey: string
+): Promise<string> {
+  const contents = [
+    {
+      role: 'user',
+      parts: [{ text: `${NIRA_SYSTEM_PROMPT}\n\nPlease respond to the user as NIRA.` }],
+    },
+    {
+      role: 'model',
+      parts: [{ text: `Vanakkam! I understand my role as NIRA. I am ready to speak with warmth, empathy, and evidence-based guidance.` }],
+    },
+  ]
+
+  // Add last 6 turns of conversation history
+  const recentHistory = history.slice(-6)
+  recentHistory.forEach((msg) => {
+    contents.push({
+      role: msg.role === 'user' ? 'user' : 'model',
+      parts: [{ text: msg.content }],
+    })
+  })
+
+  // Add the current prompt
+  contents.push({
+    role: 'user',
+    parts: [{ text: userPrompt }],
+  })
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents,
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 800,
+      },
+    }),
+  })
+
+  if (!res.ok) {
+    throw new Error(`Gemini API error: ${res.statusText}`)
+  }
+
+  const data = await res.json()
+  const candidate = data.candidates?.[0]?.content?.parts?.[0]?.text
+  if (!candidate) {
+    throw new Error('Empty response from Gemini API')
+  }
+  return candidate
+}
+
+/**
+ * Intelligent, conversational AI engine for NIRA.
+ * Supports multi-turn memory, context tracking, and optional live Gemini LLM streaming.
  */
 export async function generateNiraResponse(
   userPrompt: string,
@@ -48,126 +120,274 @@ export async function generateNiraResponse(
 ): Promise<NiraResponse> {
   const query = userPrompt.toLowerCase().trim()
 
-  // 1. Check for Emergency / Life-Threatening Situations
+  // 1. Immediate Life-Threatening Emergency Protocol
   const isEmergency = EMERGENCY_KEYWORDS.some((kw) => query.includes(kw))
   if (isEmergency) {
     return {
       isEmergency: true,
-      content: `🚨 **IMMEDIATE EMERGENCY PROTOCOL**
+      content: `🚨 **Please stay calm, but take action right now — your safety or your friend's safety is the absolute top priority.**
 
-I am glad you reached out, but **your safety is the absolute top priority right now**. If you or someone near you is in medical distress, experiencing severe difficulty breathing, unconscious, having seizures, or having thoughts of self-harm, please act immediately:
+If someone is unconscious, having seizures, struggling to breathe, or in immediate distress, please don't wait:
 
-1. **Call 108 immediately** (Tamil Nadu Free Emergency Ambulance Service).
-2. **Call 112** (National Unified Emergency Response).
-3. **Call 14446** (Tele-MANAS 24/7 Mental Health Crisis Line — Tamil & English).
+📞 **Call 108 immediately** (Tamil Nadu Free Emergency Ambulance)  
+📞 **Call 14446** (Tele-MANAS 24/7 Mental Health Helpline)  
+📞 **Call 112** (National Emergency)
 
-**Immediate First-Aid Guidelines:**
-• If the person is unconscious but breathing, turn them onto their side into the **Recovery Position** to keep their airway open and prevent choking.
-• Stay with them. Keep them calm and warm.
-• Do not give them food, black coffee, or attempt to induce vomiting.
-• Inform emergency responders honestly about what was taken so they can administer the right antidote without delay.
+**While the ambulance is on the way:**
+- If they are unconscious, gently turn them onto their side into the **Recovery Position** so their airway stays clear and they won't choke.
+- Stay right beside them. Speak softly and keep them warm.
+- Don't try to give them food, black coffee, or force them to vomit.
+- Be completely honest with the paramedics about what was taken. Their job is solely to save a life without judgment.
 
-*You do not have to face this alone. Help is on the way.*`,
+I'm right here with you. Please call **108** right now.`,
       suggestions: [
-        'Call 108 Emergency Ambulance',
-        'Call 14446 Tele-MANAS',
-        'How to place someone in the recovery position?',
-        'Find nearest emergency hospital in Tamil Nadu',
+        'Call 108 Ambulance right now',
+        'How to place someone in the recovery position',
+        'Find nearest hospital in Tamil Nadu',
       ],
     }
   }
 
-  // 2. Check for Prohibited / Dangerous Queries
+  // 2. Strict Safety Boundary: Sourcing / Concealment
   const isRestricted = RESTRICTED_KEYWORDS.some((kw) => query.includes(kw))
   if (isRestricted) {
     return {
       isEmergency: false,
-      content: `I cannot assist with instructions for obtaining, manufacturing, concealing, or consuming controlled substances. My purpose is strictly to provide confidential health awareness, prevention strategies, and recovery support.
+      content: `I hear what you're asking, but I can't help with finding, buying, making, or concealing substances. My sole purpose is to keep you safe, supported, and informed.
 
-If you or a loved one are experiencing cravings, feeling overwhelmed, or looking for ways to cope with stress, I am here to help you find safe, judgment-free support. Would you like to explore healthy alternatives or talk to a confidential counselor?`,
+If things feel heavy right now, or if you're dealing with stress or peer pressure, we can talk about what's really going on behind that. I'm in your corner with zero judgment. Would you like to talk about how you're feeling?`,
       suggestions: [
         'How can I handle peer pressure?',
-        'What are healthy ways to manage stress?',
-        'Find confidential de-addiction centers near me',
-        'Speak to a Tele-MANAS counselor',
+        'What are healthy ways to deal with stress?',
+        'Talk to a confidential counselor (14446)',
       ],
     }
   }
 
-  // 3. Contextual Responses Based on Intent
+  // 3. Try Live AI API if Key is Configured (via .env or in-app localStorage)
+  const apiKey =
+    import.meta.env.VITE_AI_API_KEY ||
+    localStorage.getItem('nira_gemini_api_key') ||
+    ''
 
-  // Helping a friend
+  if (apiKey && apiKey.trim() !== '') {
+    try {
+      const liveAiText = await callGeminiApi(userPrompt, history, apiKey.trim())
+      return {
+        isEmergency: false,
+        content: liveAiText,
+        suggestions: [
+          'How can I help a friend who may be using drugs?',
+          'Tell me more about the CLEAR refusal framework',
+          'Find rehabilitation centers in Tamil Nadu',
+        ],
+      }
+    } catch (err) {
+      console.warn('Live AI fallback triggered:', err)
+      // Fall through to conversational engine below
+    }
+  }
+
+  // 4. Multi-Turn Context Aware Conversational Responses
+
+  // Greetings & Check-ins
+  if (
+    query === 'hi' ||
+    query === 'hello' ||
+    query === 'hey' ||
+    query === 'vanakkam' ||
+    query.startsWith('hi ') ||
+    query.startsWith('hello ') ||
+    query.startsWith('hey ') ||
+    query.includes('how are you')
+  ) {
+    return {
+      isEmergency: false,
+      content: `Vanakkam! Hey there 👋 
+
+I'm really glad you stopped by to talk. I’m **NIRA**, your confidential awareness and support friend. 
+
+You can talk to me about anything that's on your mind—whether it's dealing with hostel peer pressure, worries about a friend or roommate, questions about how certain substances affect the brain, or finding safe help in Tamil Nadu. 
+
+How is your day going? What brought you here today?`,
+      suggestions: [
+        'How can I help a friend who may be using drugs?',
+        'I feel pressured by my friends. What should I do?',
+        'Is talking to you really confidential?',
+        'Find rehabilitation centers near me',
+      ],
+    }
+  }
+
+  // Confidentiality & Trust Question
+  if (
+    query.includes('confidential') ||
+    query.includes('secret') ||
+    query.includes('will you tell') ||
+    query.includes('safe to talk') ||
+    query.includes('police')
+  ) {
+    return {
+      isEmergency: false,
+      content: `Yes, you are completely safe here. 
+
+Your conversation with me is private and judgment-free. I don't ask for your real name, phone number, or college details, and our mission is solely to give you trusted health guidance and emotional support.
+
+Asking questions or reaching out for help is a sign of immense courage. You are in total control of this conversation. 
+
+What's going on that made you want to ask? I'm listening.`,
+      suggestions: [
+        'I need advice about a friend',
+        'I feel pressured at a college party',
+        'What are early signs of addiction?',
+      ],
+    }
+  }
+
+  // Helping a Friend
   if (
     query.includes('help a friend') ||
     query.includes('friend using') ||
     query.includes('roommate') ||
+    query.includes('my friend') ||
     query.includes('someone i know')
   ) {
     return {
       isEmergency: false,
-      content: `I’m really glad you reached out. Stepping forward to help a friend shows deep care and courage. Here is how you can support them without judgment or confrontation:
+      content: `First off, I want to say: **your friend is truly lucky to have you in their corner.** It takes real love and courage to step up when someone you care about might be slipping.
 
-### 1. Choose the Right Moment
-• Talk in a quiet, private setting when neither of you is stressed, angry, or under the influence.
-• Avoid cornering them in front of others, which triggers defensiveness and shame.
+It's completely normal to feel worried about how to approach them without creating tension. Here is how you can talk to them:
 
-### 2. Use Empathetic "I" Statements
-• Say: *"I care about you, and I’ve noticed you’ve been seeming stressed and exhausted lately. I’m worried about your health."*
-• Avoid blaming statements like: *"You are ruining your life"* or *"Why are you doing drugs?"*
+**1. Pick a quiet, private moment**  
+Don't bring it up at a party, in front of other hostel mates, or when they seem irritable. Catch them one-on-one when things are calm.
 
-### 3. Avoid Enabling
-• Don’t cover for their absences, lend money for unknown expenses, or make excuses for them. Loving someone means not protecting them from the reality of their health.
+**2. Focus on how much you care, not on blaming them**  
+Instead of saying: *"Why are you doing this? You're ruining your future,"* try something warm:  
+> *"Hey, I've noticed you've been carrying a lot of stress lately and seem exhausted. I care about you a lot, and I'm honestly worried about your health. How are things really going?"*
 
-### 4. Offer Accompaniment
-• Fear of judgment often prevents people from seeking help. Offer to take the first step together:
-  - *"Would you like me to walk with you to the college counselor?"*
-  - *"We can call the Tamil Nadu 104 helpline or Tele-MANAS (14446) together right now."*
+**3. Don't be the lone savior — walk beside them**  
+People often avoid seeking help because they're terrified of being judged by authorities or doctors. Offer to take the first step together:  
+> *"You don't have to carry this alone. If you want, I can walk with you to the college counselor, or we can call Tele-MANAS (14446) together on speaker."*
 
-### 5. Remember Your Own Boundaries
-• You can support them, but you cannot cure them alone. Involve professional medical guidance early.`,
+**4. Protect your own boundaries**  
+Support them emotionally, but don't lend them money for unknown expenses or lie to wardens/professors to cover for them. Loving someone means not protecting them from reality.
+
+Have you noticed any particular changes in them lately, like missing classes or pulling away?`,
       suggestions: [
-        'What are early warning signs to watch for?',
-        'Find de-addiction centers in Tamil Nadu',
-        'What is the CLEAR refusal method?',
-        'How does Tele-MANAS work?',
+        'What warning signs should I look out for?',
+        'What if my friend gets angry when I bring it up?',
+        'Find counseling centers in Tamil Nadu',
+        'How does the 14446 helpline work?',
       ],
     }
   }
 
-  // Handling Peer Pressure
+  // Peer Pressure / Hostel Life
   if (
     query.includes('peer pressure') ||
     query.includes('pressured') ||
     query.includes('force me') ||
-    query.includes('party') ||
     query.includes('hostel') ||
-    query.includes('say no')
+    query.includes('say no') ||
+    query.includes('party') ||
+    query.includes('seniors')
   ) {
     return {
       isEmergency: false,
-      content: `It takes immense personal strength to pause and say no when everyone around you seems to be participating. Remember: **Real friends will never condition their respect on your self-harm.**
+      content: `I hear you loud and clear. Being in a hostel or at a party when seniors or friends are pushing you to "just try it once to relax" is one of the hardest social situations any student faces.
 
-Here is the **CLEAR Refusal Framework**, tested by student psychologists:
+Here is an absolute truth: **Real friends will never condition their respect on whether you harm yourself.**
 
-• **C — Calm & Confident:** Maintain eye contact and a steady tone. Hesitation or looking down invites pushy peers to insist.
-• **L — Look for an Exit:** Keep your body angled toward the door or a safer group.
-• **E — Emphatic & Short:** Say: *"No thanks, I don’t do that"* or *"I’m good with my drink."* You never owe anyone an elaborate medical excuse.
-• **A — Alternative Suggestion:** *"I’m heading down to get some tea / food; coming with?"* If they persist, you have already transitioned away.
-• **R — Remove Yourself:** If they keep pushing, walk away smoothly. A momentary awkward silence is far better than years of regret.
+Whenever you feel cornered in that moment, use the **CLEAR** formula:
 
-### Practical Tips for College & Hostels:
-1. Always keep your own beverage cup in your hand so people don't offer you another.
-2. Find at least one peer who shares your values. Even two people together create an unbreakable boundary.
-3. Have a predefined exit plan (e.g., a family call or early morning commitment).`,
+- **C — Calm & Steady:** Look them directly in the eye and speak casually. If you look down or mumble, people think they can convince you.
+- **L — Look for an exit:** Keep your body angled toward the door, or stay near someone who isn't participating.
+- **E — Emphatic & Short:** Keep it brief: *"No thanks, I'm good"* or *"Nah, I don't touch that stuff."* You don't need to invent a long medical excuse.
+- **A — Alternative:** Shift the spotlight: *"I'm going down for some chai / food, who's coming?"*
+- **R — Remove yourself:** If they keep pushing, walk away smoothly. A minute of awkwardness is 100x better than years of regret.
+
+Have you been dealing with this at your college or hostel recently? Tell me what happened, and we can figure out the easiest way to handle it together.`,
       suggestions: [
-        'Try the interactive "What would you do?" scenario',
-        'What are the effects of cannabis and party pills?',
-        'How to build healthy stress coping habits?',
+        'What if they call me boring or uncool?',
+        'Try the "What would you do?" scenario challenge',
+        'How to build healthy habits to manage exam stress',
       ],
     }
   }
 
-  // Finding Centers / Tamil Nadu Help
+  // Academic Stress & Exam Shortcuts
+  if (
+    query.includes('exam') ||
+    query.includes('study') ||
+    query.includes('stay awake') ||
+    query.includes('stress') ||
+    query.includes('tension') ||
+    query.includes('burnout')
+  ) {
+    return {
+      isEmergency: false,
+      content: `Engineering, medical, and college exams in Tamil Nadu can feel like intense pressure cookers. A lot of students hear dangerous rumors like: *"Take this pill, it will help you study for 20 hours straight"* or *"Smoking weed relaxes your brain before exams."*
+
+Here's the honest science: **It's a trap.** 
+
+Chemical stimulants and substances actually destroy your brain's working memory and REM sleep. You might feel awake, but during the actual exam paper the next morning, your brain experiences severe brain fog and panic rebound.
+
+**Real ways to handle exam stress that actually boost memory:**
+1. **The 25/5 Pomodoro Method:** Study for 25 minutes, take a 5-minute break away from screens.
+2. **Short 15-minute walks:** A brisk walk stimulates natural dopamine and neurogenesis (brain cell growth).
+3. **Protect 6 hours of sleep:** Your brain only commits formulas and concepts to long-term memory while you are sleeping!
+
+Are you feeling stressed about upcoming exams right now? What are you studying?`,
+      suggestions: [
+        'How can I manage intense exam anxiety naturally?',
+        'What are the real effects of study pills and stimulants?',
+        'Talk to a student counselor',
+      ],
+    }
+  }
+
+  // Warning Signs & How to Recognize Addiction
+  if (
+    query.includes('sign') ||
+    query.includes('symptom') ||
+    query.includes('how to know') ||
+    query.includes('recognize') ||
+    query.includes('notice') ||
+    query.includes('addicted')
+  ) {
+    return {
+      isEmergency: false,
+      content: `Spotting the signs early is what allows people to step in before severe dependence sets in. 
+
+Rather than looking at just one bad day, watch for a **pattern across these three areas:**
+
+👀 **1. In their physical appearance:**
+- Bloodshot or glassy eyes; unusually dilated or pinpoint pupils.
+- Sudden unexplained weight loss or completely skipping meals.
+- Strange chemical, incense, or smoke smells on their clothes or in their room.
+- Wearing long-sleeved jackets or hoodies constantly, even in warm Tamil Nadu weather.
+
+🚪 **2. In their everyday behavior:**
+- Suddenly locking their hostel or bedroom doors and whispering on calls.
+- Skipping morning classes, attendance dropping below mandatory cutoffs.
+- Asking for urgent money or loans with vague, fabricated reasons.
+- Pulling away from longtime friends and hanging out exclusively with a new crowd.
+
+⚡ **3. In their emotions:**
+- Unpredictable mood swings: laughing one moment, intensely irritable the next.
+- Losing interest in sports, gaming, projects, or hobbies they used to love.
+- Becoming extremely defensive or angry if anyone asks how they're doing.
+
+Are you noticing some of these signs in yourself, or in a friend or family member?`,
+      suggestions: [
+        'How to bring this up with them gently?',
+        'Find de-addiction centers in Tamil Nadu',
+        'Can someone recover from this completely?',
+      ],
+    }
+  }
+
+  // Finding Care in Tamil Nadu
   if (
     query.includes('center') ||
     query.includes('rehab') ||
@@ -176,125 +396,114 @@ Here is the **CLEAR Refusal Framework**, tested by student psychologists:
     query.includes('tamil nadu') ||
     query.includes('chennai') ||
     query.includes('madurai') ||
-    query.includes('coimbatore')
+    query.includes('coimbatore') ||
+    query.includes('trichy') ||
+    query.includes('doctor')
   ) {
     return {
       isEmergency: false,
-      content: `Tamil Nadu has an established network of recognized government psychiatric hospitals, District Mental Health Programmes (DMHP), and specialized de-addiction centers:
+      content: `Tamil Nadu actually has some of the finest, most compassionate government and recognized de-addiction facilities in India:
 
-### Verified Key Facilities:
-• **Chennai:** Institute of Mental Health (IMH), Kilpauk — 044-26420556 (24/7 Govt Inpatient & Detox)
-• **Chennai:** TTK Hospital, Adyar — 044-24912950 (Pioneering residential de-addiction institution)
-• **Madurai:** Government Rajaji Hospital Psychiatry Unit — 0452-2532535
-• **Coimbatore:** Coimbatore Medical College Hospital (CMCH) — 0422-2301393
-• **Tiruchirappalli:** KAP Viswanathan Govt Medical College Hospital — 0431-2415511
-• **Salem:** Govt Mohan Kumaramangalam Medical College Hospital — 0427-2211212
-• **Tirunelveli:** Tirunelveli Medical College Hospital (TVMCH) — 0462-2572733
+🏛️ **Leading Verified Centers:**
+- **Chennai:** Institute of Mental Health (IMH), Kilpauk — 044-26420556 *(24/7 dedicated govt inpatient & detox care)*
+- **Chennai:** TTK Hospital, Adyar — 044-24912950 *(India's premier non-profit residential recovery center)*
+- **Coimbatore:** CMCH Hospital De-Addiction Unit — 0422-2301393
+- **Madurai:** Government Rajaji Hospital Psychiatry Unit — 0452-2532535
+- **Tiruchirappalli:** KAP Viswanathan Govt Medical College — 0431-2415511
+- **Salem:** Govt Mohan Kumaramangalam Medical College — 0427-2211212
+- **Tirunelveli:** TVMCH Hospital, Palayamkottai — 0462-2572733
 
-### Statewide 24/7 Helplines:
-• **Tele-MANAS (Mental Health & Substance Advisory):** Call **14446** (Toll-Free, Tamil & English)
-• **TN Health Information Line:** Call **104**
-• **Emergency Ambulance:** Call **108**
+📞 **Statewide 24/7 Toll-Free Hotlines:**
+- **Tele-MANAS (Mental Health & Counseling):** **14446** *(Toll-Free, Tamil & English, 24/7)*
+- **TN Health Helpline:** **104**
+- **Emergency Ambulance:** **108**
 
-You can also use our interactive **Find Help Near Me** map page to view real-time distances, exact addresses, and filter by government vs counseling facilities!`,
+You can also head over to our **Find Help Near Me** page on this site—it has an interactive map with distances from your location! 
+
+Which district are you in right now? I can tell you the closest place.`,
       suggestions: [
-        'Open Find Help Locator page',
-        'Is de-addiction treatment confidential?',
-        'What happens during medical detoxification?',
+        'Go to Find Help locator map',
+        'What happens when you visit a de-addiction ward?',
+        'Is government treatment free in Tamil Nadu?',
       ],
     }
   }
 
-  // Warning Signs / How to Recognize
+  // Recovery & Hope
   if (
-    query.includes('sign') ||
-    query.includes('symptom') ||
-    query.includes('how to know') ||
-    query.includes('recognize') ||
-    query.includes('notice')
+    query.includes('recover') ||
+    query.includes('hope') ||
+    query.includes('cure') ||
+    query.includes('stop') ||
+    query.includes('quit') ||
+    query.includes('can i change')
   ) {
     return {
       isEmergency: false,
-      content: `Recognizing warning signs early can save lives. Warning signs typically emerge across three distinct dimensions:
+      content: `I want to answer this with 100% honesty and conviction: **Yes. Recovery is absolutely, unconditionally possible.**
 
-### 1. Physical Changes
-• Bloodshot or glassy eyes; pinpoint or widely dilated pupils
-• Unexplained weight loss or gain; deteriorating personal hygiene
-• Slurred speech, unsteady gait, or unexplained hand tremors
-• Strange chemical or smoke odors on clothing and breath
-• Wearing long sleeves even in hot Tamil Nadu weather to hide puncture marks or bruising
+The human brain has an incredible superpower called **neuroplasticity**. When someone has been using drugs or alcohol, the brain's reward circuits get temporarily hijacked. But the moment medical treatment begins and the brain is given clean time, counseling, and rest, those receptors regenerate and heal.
 
-### 2. Behavioral Shifts
-• Sudden drop in academic performance, missed classes, or absenteeism
-• Increased secrecy: locking bedroom doors, hiding bags, whispering on phone calls
-• Unexplained financial requests or disappearing valuables from home
-• Drastic change in friend circles; abandonment of longtime hobbies
+**What real recovery looks like:**
+- It is rarely a straight line—there will be tough days and good days.
+- Asking for medical help is not a failure; it is the moment you take your steering wheel back.
+- Thousands of students and professionals right here in Tamil Nadu who once felt completely hopeless have rebuilt their careers, restored trust with their families, and found deep peace.
 
-### 3. Emotional & Psychological Shifts
-• Unprovoked anger flare-ups, extreme irritability, or sudden hostility
-• Severe lethargy, lack of motivation, or alternating bouts of hyperactivity and exhaustion
-• Paranoia, anxiety, or emotional numbness
+If you or someone you care about wants to take that first step, you don't have to leap the whole staircase at once. Just taking one step today is enough. 
 
-*Notice: Having one sign doesn't automatically imply substance use, but a cluster of these signs warrants a gentle, caring conversation.*`,
+Would you like to explore what medical detoxification actually looks like?`,
       suggestions: [
-        'How to start a conversation with someone showing these signs?',
+        'What happens during medical detox?',
+        'Read illustrative recovery stories',
         'Find nearby counseling centers',
-        'Can you explain the effects of drug abuse?',
       ],
     }
   }
 
-  // Effects of Drugs
+  // Emotional Support / Feeling Scared or Down
   if (
-    query.includes('effect') ||
-    query.includes('harm') ||
-    query.includes('danger') ||
-    query.includes('what happens') ||
-    query.includes('why bad')
+    query.includes('scared') ||
+    query.includes('afraid') ||
+    query.includes('alone') ||
+    query.includes('crying') ||
+    query.includes('sad') ||
+    query.includes('hopeless') ||
+    query.includes('feel bad') ||
+    query.includes('anxious')
   ) {
     return {
       isEmergency: false,
-      content: `Substance abuse creates profound disruptions throughout the entire human body and social life:
+      content: `I hear you, and I want to sit with you in this moment. Please take a gentle, deep breath. 
 
-### 1. The Brain & Dopamine Hijack
-Natural activities (eating, exercising, achieving a goal) release moderate dopamine spikes. Drugs flood the brain's reward center with 2x to 10x unnatural dopamine surges. Over time, the brain down-regulates its receptors:
-• Everyday life loses all joy (anhedonia).
-• The individual requires the drug just to feel normal, not high.
+Whatever you are going through right now, please know that **you are not alone, and you are not broken.** Life can throw immense weight at us, and it makes complete sense that you feel overwhelmed.
 
-### 2. Physical Health Impacts
-• **Cardiovascular:** Extreme blood pressure spikes, irregular heartbeats, and heart attacks (especially stimulants).
-• **Respiratory:** Fatal breathing suppression (opioids, sedatives, alcohol combinations).
-• **Neurological:** Permanent cognitive decline, memory impairment, and psychosis.
-• **Organ Damage:** Cirrhosis of the liver, acute kidney failure, and weakened immune defense.
+You don't have to figure out the next 5 years of your life right now. You only need to get through today. 
 
-### 3. Relationships & Life Trajectory
-• Broken trust with parents, spouses, and close friends.
-• Disrupted university degrees, career stagnation, and severe financial debt.
-• Legal vulnerabilities and police prosecution under the NDPS Act.
+If you want someone to speak to confidentially right this second, you can call **14446** (Tele-MANAS). They have kind, gentle counselors available 24/7 in Tamil and English who will just listen to you without judgment.
 
-**The Good News:** The brain has remarkable neuroplasticity. With evidence-based medical treatment and psychological support, recovery and rebuilding are 100% possible.`,
+I am right here too. Would you like to tell me a little bit about what's making you feel this way?`,
       suggestions: [
-        'What are the 6 stages of recovery?',
-        'How does medical detoxification work?',
-        'Find rehabilitation centers near me',
+        'Call 14446 Tele-MANAS (24/7 Free)',
+        'I need help dealing with stress',
+        'How can I help a friend who may be using drugs?',
       ],
     }
   }
 
-  // General Welcoming / Default Response
+  // Default Conversational Response
   return {
     isEmergency: false,
-    content: `I’m glad you reached out. I am **NIRA**, your confidential awareness and support guide dedicated to building a **Drug-Free Tamil Nadu**.
+    content: `I'm really glad you brought this up. 
 
-You don’t have to handle stress, questions, or concerns alone. Here are a few ways I can assist you right now:
+As your awareness guide for a **Drug-Free Tamil Nadu**, I want to make sure you get clear, supportive, and practical answers without any lectures or judgment. 
 
-• **Educational Insights:** Understand how different substances affect the brain and body.
-• **Practical Prevention:** Learn the CLEAR refusal framework to handle peer pressure in college hostels or social events.
-• **Helping Others:** Get gentle, non-judgmental guidance on supporting a friend or family member.
-• **Finding Local Care:** Locate verified government hospitals and de-addiction facilities across Tamil Nadu.
-• **Crisis Guidance:** Immediate emergency protocols and verified helplines (108, 104, 14446).
+Here are a few areas we can explore together right now:
+- **Helping a friend:** How to talk to a roommate or classmate gently.
+- **Handling social pressure:** Practical ways to say no without feeling uncool at parties or hostels.
+- **Understanding substance risks:** What alcohol, cannabis, or party pills really do to the body and brain.
+- **Finding verified local care:** Getting connected with confidential doctors and counselors in Tamil Nadu.
 
-What would you like to explore together today?`,
+Tell me a little more about what's on your mind, or tap one of the questions below!`,
     suggestions: [
       'How can I help a friend who may be using drugs?',
       'I feel pressured by my friends. What should I do?',
