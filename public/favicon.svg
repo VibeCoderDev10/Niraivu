@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06b6d4" />
+      <stop offset="100%" stop-color="#0d9488" />
+    </linearGradient>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#shieldGrad)" stroke="#14b8a6" stroke-width="2" />
+  <!-- Protective Petals / Lotus / Renewal Symbol -->
+  <path d="M32 12C32 12 24 24 24 34C24 38.4183 27.5817 42 32 42C36.4183 42 40 38.4183 40 34C40 24 32 12 32 12Z" fill="url(#grad1)" opacity="0.9" />
+  <path d="M22 24C22 24 16 32 18 39C19.2 43.2 23.5 45.5 27 44C25 40 24 35 25 30C25.5 27.5 22 24 22 24Z" fill="#38bdf8" opacity="0.75" />
+  <path d="M42 24C42 24 48 32 46 39C44.8 43.2 40.5 45.5 37 44C39 40 40 35 39 30C38.5 27.5 42 24 42 24Z" fill="#2dd4bf" opacity="0.75" />
+  <circle cx="32" cy="49" r="3" fill="#22d3ee" />
+</svg>
