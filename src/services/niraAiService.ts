@@ -51,12 +51,13 @@ Your personality:
 Keep your tone conversational, reassuring, and compassionate.`
 
 /**
- * Calls live Google Gemini API if an API key is available
+ * Calls live Google Gemini API with real-time SSE streaming for instant responses
  */
 async function callGeminiApi(
   userPrompt: string,
   history: ChatMessage[],
-  apiKey: string
+  apiKey: string,
+  onChunk?: (streamedText: string) => void
 ): Promise<string> {
   const contents = [
     {
@@ -65,7 +66,7 @@ async function callGeminiApi(
     },
     {
       role: 'model',
-      parts: [{ text: `Vanakkam! I understand my role as NIRA. I am ready to speak with warmth, empathy, and evidence-based guidance.` }],
+      parts: [{ text: `Vanakkam! I understand my role as NIRA. I am ready to speak with warmth, empathy, and practical guidance.` }],
     },
   ]
 
@@ -78,14 +79,16 @@ async function callGeminiApi(
     })
   })
 
-  // Add the current prompt
+  // Add current prompt
   contents.push({
     role: 'user',
     parts: [{ text: userPrompt }],
   })
 
-  const modelName = import.meta.env.VITE_AI_MODEL || 'gemini-3.6-flash'
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`
+  const modelName = import.meta.env.VITE_AI_MODEL || 'gemini-3.5-flash-lite'
+  const isStreaming = Boolean(onChunk)
+  const endpoint = isStreaming ? 'streamGenerateContent?alt=sse' : 'generateContent'
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:${endpoint}&key=${apiKey}`
 
   const res = await fetch(url, {
     method: 'POST',
@@ -103,6 +106,44 @@ async function callGeminiApi(
     throw new Error(`Gemini API error: ${res.statusText}`)
   }
 
+  // Handle SSE streaming
+  if (isStreaming && res.body) {
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    let fullText = ''
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (trimmed.startsWith('data: ')) {
+          const jsonStr = trimmed.replace('data: ', '').trim()
+          if (jsonStr === '[DONE]') continue
+          try {
+            const parsed = JSON.parse(jsonStr)
+            const textChunk = parsed.candidates?.[0]?.content?.parts?.[0]?.text || ''
+            if (textChunk) {
+              fullText += textChunk
+              onChunk!(fullText)
+            }
+          } catch (e) {
+            // Ignore partial SSE chunks
+          }
+        }
+      }
+    }
+
+    if (fullText) return fullText
+  }
+
+  // Non-streaming fallback
   const data = await res.json()
   const candidate = data.candidates?.[0]?.content?.parts?.[0]?.text
   if (!candidate) {
@@ -113,11 +154,12 @@ async function callGeminiApi(
 
 /**
  * Intelligent, conversational AI engine for NIRA.
- * Supports multi-turn memory, context tracking, and optional live Gemini LLM streaming.
+ * Supports real-time streaming, multi-turn memory, and emergency triage.
  */
 export async function generateNiraResponse(
   userPrompt: string,
-  history: ChatMessage[] = []
+  history: ChatMessage[] = [],
+  onChunk?: (streamedText: string) => void
 ): Promise<NiraResponse> {
   const query = userPrompt.toLowerCase().trim()
 
@@ -165,7 +207,7 @@ If things feel heavy right now, or if you're dealing with stress or peer pressur
     }
   }
 
-  // 3. Try Live AI API if Key is Configured (via .env or in-app localStorage)
+  // 3. Try Live AI API with Streaming if Key is Configured
   const apiKey =
     import.meta.env.VITE_AI_API_KEY ||
     localStorage.getItem('nira_gemini_api_key') ||
@@ -173,7 +215,7 @@ If things feel heavy right now, or if you're dealing with stress or peer pressur
 
   if (apiKey && apiKey.trim() !== '') {
     try {
-      const liveAiText = await callGeminiApi(userPrompt, history, apiKey.trim())
+      const liveAiText = await callGeminiApi(userPrompt, history, apiKey.trim(), onChunk)
       return {
         isEmergency: false,
         content: liveAiText,
@@ -185,7 +227,7 @@ If things feel heavy right now, or if you're dealing with stress or peer pressur
       }
     } catch (err) {
       console.warn('Live AI fallback triggered:', err)
-      // Fall through to conversational engine below
+      // Fall through to fast local conversational engine below
     }
   }
 

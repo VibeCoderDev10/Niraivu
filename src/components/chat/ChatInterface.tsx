@@ -105,23 +105,50 @@ Whether you're looking out for a friend, feeling pressured yourself, or just wan
     setIsTyping(true)
 
     try {
-      // Pass full conversation history for multi-turn conversational context
-      const response = await generateNiraResponse(messageContent, updatedHistory)
+      const assistantMessageId = `assistant-${Date.now()}`
 
-      setTimeout(() => {
-        const assistantMessageId = `assistant-${Date.now()}`
-        const newAssistantMessage: ChatMessage = {
-          id: assistantMessageId,
-          role: 'assistant',
-          content: response.content,
-          isEmergency: response.isEmergency,
-          suggestions: response.suggestions,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      // Pass full conversation history and live streaming callback
+      const response = await generateNiraResponse(
+        messageContent,
+        updatedHistory,
+        (streamedText) => {
+          setMessages((prev) => {
+            const exists = prev.some((m) => m.id === assistantMessageId)
+            if (exists) {
+              return prev.map((m) =>
+                m.id === assistantMessageId ? { ...m, content: streamedText } : m
+              )
+            } else {
+              return [
+                ...prev,
+                {
+                  id: assistantMessageId,
+                  role: 'assistant',
+                  content: streamedText,
+                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                },
+              ]
+            }
+          })
         }
+      )
 
-        setMessages((prev) => [...prev, newAssistantMessage])
-        setIsTyping(false)
-      }, 500)
+      // Finalize the response with suggestions and emergency flags immediately
+      setMessages((prev) => {
+        const filtered = prev.filter((m) => m.id !== assistantMessageId)
+        return [
+          ...filtered,
+          {
+            id: assistantMessageId,
+            role: 'assistant',
+            content: response.content,
+            isEmergency: response.isEmergency,
+            suggestions: response.suggestions,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          },
+        ]
+      })
+      setIsTyping(false)
     } catch (error) {
       setIsTyping(false)
       const errorMessage: ChatMessage = {
