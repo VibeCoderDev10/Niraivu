@@ -13,6 +13,11 @@ import {
   Settings,
   X,
   Key,
+  ExternalLink,
+  MapPin,
+  Activity,
+  BookOpen,
+  ArrowRight,
 } from 'lucide-react'
 import { ChatMessage } from '../../types'
 import { generateNiraResponse } from '../../services/niraAiService'
@@ -20,6 +25,171 @@ import { generateNiraResponse } from '../../services/niraAiService'
 interface ChatInterfaceProps {
   initialPrompt?: string
   isStandalonePage?: boolean
+}
+
+/**
+ * Inline markdown parser supporting [label](url), **bold**, *italic*, and phone calls
+ */
+const renderInlineTokens = (text: string, onNavigate: (route: string) => void) => {
+  const parts: React.ReactNode[] = []
+  const tokenRegex = /(\[([^\]]+)\]\(([^)]+)\))|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = tokenRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.substring(lastIndex, match.index))
+    }
+
+    if (match[1]) {
+      // Markdown link: match[2] is label, match[3] is url
+      const label = match[2]
+      const url = match[3]
+
+      if (url.startsWith('#')) {
+        const route = url.replace('#', '')
+        parts.push(
+          <button
+            key={match.index}
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              onNavigate(route)
+            }}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 mx-1 my-0.5 rounded-lg bg-teal-500/20 hover:bg-teal-500/35 text-teal-200 border border-teal-500/40 text-xs font-semibold shadow-sm transition-all hover:scale-[1.02] active:scale-95 cursor-pointer text-left"
+          >
+            <span>{label}</span>
+            <ExternalLink className="w-3 h-3 text-teal-300 shrink-0" />
+          </button>
+        )
+      } else if (url.startsWith('tel:')) {
+        parts.push(
+          <a
+            key={match.index}
+            href={url}
+            className="inline-flex items-center gap-1 px-2 py-0.5 mx-1 my-0.5 rounded-md bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/40 text-xs font-bold transition-all"
+          >
+            <PhoneCall className="w-3 h-3 text-rose-300" />
+            <span>{label}</span>
+          </a>
+        )
+      } else {
+        parts.push(
+          <a
+            key={match.index}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-cyan-400 hover:text-cyan-300 underline font-medium"
+          >
+            <span>{label}</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        )
+      }
+    } else if (match[4]) {
+      // Bold: match[5]
+      parts.push(
+        <strong key={match.index} className="font-bold text-white">
+          {match[5]}
+        </strong>
+      )
+    } else if (match[6]) {
+      // Italic: match[7]
+      parts.push(
+        <em key={match.index} className="italic text-slate-300">
+          {match[7]}
+        </em>
+      )
+    }
+
+    lastIndex = tokenRegex.lastIndex
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.substring(lastIndex))
+  }
+
+  return parts
+}
+
+/**
+ * Structured markdown message formatter for rich AI responses
+ */
+const FormattedMessage: React.FC<{ content: string; onNavigate: (route: string) => void }> = ({
+  content,
+  onNavigate,
+}) => {
+  const lines = content.split('\n')
+
+  return (
+    <div className="space-y-1.5 leading-relaxed text-sm">
+      {lines.map((line, idx) => {
+        const trimmed = line.trim()
+        if (!trimmed) {
+          return <div key={idx} className="h-1.5" />
+        }
+
+        // Heading ### or ## or #
+        if (trimmed.startsWith('### ')) {
+          return (
+            <h4
+              key={idx}
+              className="text-sm font-bold text-teal-300 pt-2 pb-0.5 border-b border-slate-800/80 flex items-center gap-1.5"
+            >
+              <span>{trimmed.replace(/^###\s+/, '')}</span>
+            </h4>
+          )
+        }
+        if (trimmed.startsWith('## ')) {
+          return (
+            <h3
+              key={idx}
+              className="text-base font-extrabold text-cyan-300 pt-2.5 pb-1 border-b border-slate-800"
+            >
+              {trimmed.replace(/^##\s+/, '')}
+            </h3>
+          )
+        }
+
+        // Bullet points
+        if (trimmed.startsWith('• ') || trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+          const bulletContent = trimmed.replace(/^([•*-]\s+)/, '')
+          return (
+            <div key={idx} className="flex items-start gap-2 pl-1 py-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-teal-400 shrink-0 mt-2"></span>
+              <div className="flex-1 text-slate-200">
+                {renderInlineTokens(bulletContent, onNavigate)}
+              </div>
+            </div>
+          )
+        }
+
+        // Numbered list
+        const numMatch = trimmed.match(/^(\d+)\.\s+(.*)/)
+        if (numMatch) {
+          return (
+            <div key={idx} className="flex items-start gap-2 pl-1 py-0.5">
+              <span className="text-xs font-bold text-teal-400 shrink-0 mt-0.5 font-mono">
+                {numMatch[1]}.
+              </span>
+              <div className="flex-1 text-slate-200">
+                {renderInlineTokens(numMatch[2], onNavigate)}
+              </div>
+            </div>
+          )
+        }
+
+        // Regular paragraph
+        return (
+          <p key={idx} className="text-slate-200">
+            {renderInlineTokens(line, onNavigate)}
+          </p>
+        )
+      })}
+    </div>
+  )
 }
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -32,17 +202,20 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       role: 'assistant',
       content: `Vanakkam! I'm **NIRA** 👋 
 
-Think of me as a safe, confidential space where you can talk openly about stress, hostel peer pressure, questions about substance risks, or finding care in Tamil Nadu—with **zero judgment**.
+Think of me as a safe, confidential guide for a **Drug-Free Tamil Nadu**. I am deeply integrated with all resources on this website:
+• **[🗺️ Interactive Rehab Map & GPS Locator](#find-help)**: Calculates exact driving distance in km to 12 verified Tamil Nadu hospitals
+• **[🧪 What Would You Do? Scenario Lab](#prevention)**: Real-time refusal practice with the CLEAR framework
+• **[📚 Substance Profiles & Science](#learn)**: Clinical facts and neurobiology without the hype
+• **24/7 Helplines**: Free Tele-MANAS (14446) & Emergency Ambulance (108)
 
-Whether you're looking out for a friend, feeling pressured yourself, or just want trusted answers, I'm right here in your corner. How are things going today?`,
+How are things going today? How can I support you?`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       suggestions: [
+        'Find nearest rehab centers in Tamil Nadu',
+        'Show verified de-addiction centers data',
         'How can I help a friend who may be using drugs?',
         'I feel pressured by my friends. What should I do?',
-        'Is talking to you really confidential?',
-        'Find rehabilitation centers near me',
-        'What are signs that someone may need help?',
-        'What should I do in an emergency?',
+        'What are the 24/7 emergency helplines?',
       ],
     },
   ])
@@ -75,6 +248,11 @@ Whether you're looking out for a friend, feeling pressured yourself, or just wan
       handleSendMessage(initialPrompt)
     }
   }, [initialPrompt])
+
+  const handleNavigate = (route: string) => {
+    window.location.hash = route
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   const handleSaveApiKey = () => {
     if (apiKeyInput.trim()) {
@@ -155,7 +333,7 @@ Whether you're looking out for a friend, feeling pressured yourself, or just wan
         id: `err-${Date.now()}`,
         role: 'assistant',
         content:
-          'I apologize, but I had a momentary glitch. If this is an urgent crisis, please call **108** (Tamil Nadu Ambulance) or **14446** (Tele-MANAS) right away.',
+          'I apologize, but I had a momentary connection glitch. If this is an urgent crisis, please call **108** (Tamil Nadu Ambulance) or **14446** (Tele-MANAS) right away.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       }
       setMessages((prev) => [...prev, errorMessage])
@@ -180,12 +358,13 @@ Whether you're looking out for a friend, feeling pressured yourself, or just wan
       {
         id: `reset-${Date.now()}`,
         role: 'assistant',
-        content: `Chat session refreshed. What would you like to talk about today? I'm right here.`,
+        content: `Chat session refreshed. What would you like to talk about today? I'm right here with full website resources.`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         suggestions: [
+          'Find nearest rehab centers in Tamil Nadu',
+          'Show verified de-addiction centers data',
           'How can I help a friend who may be using drugs?',
           'I feel pressured by my friends. What should I do?',
-          'Find rehabilitation centers near me',
         ],
       },
     ])
@@ -220,11 +399,11 @@ Whether you're looking out for a friend, feeling pressured yourself, or just wan
                     : 'bg-teal-500/10 text-teal-400 border-teal-500/30'
                 }`}
               >
-                {isLiveAiActive ? 'Live Gemini AI' : 'Trained Conversational Model'}
+                {isLiveAiActive ? 'Live Gemini 3.5 AI' : 'Trained Conversational Model'}
               </span>
             </div>
             <p className="text-[11px] text-slate-400">
-              Confidential Awareness & Support Guide
+              Grounded Support & Tamil Nadu Resource Guide
             </p>
           </div>
         </div>
@@ -232,7 +411,7 @@ Whether you're looking out for a friend, feeling pressured yourself, or just wan
         <div className="flex items-center gap-1.5 sm:gap-2">
           <button
             onClick={() => setShowSettings(!showSettings)}
-            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors border border-slate-800 flex items-center gap-1.5"
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors border border-slate-800 flex items-center gap-1.5 cursor-pointer"
             title="Configure AI Model or API Key"
           >
             <Settings className="w-3.5 h-3.5" />
@@ -241,7 +420,7 @@ Whether you're looking out for a friend, feeling pressured yourself, or just wan
 
           <button
             onClick={handleClearChat}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors border border-slate-800"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors border border-slate-800 cursor-pointer"
             title="Clear current conversation"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -260,25 +439,25 @@ Whether you're looking out for a friend, feeling pressured yourself, or just wan
             </div>
             <button
               onClick={() => setShowSettings(false)}
-              className="p-1 text-slate-400 hover:text-white"
+              className="p-1 text-slate-400 hover:text-white cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
           <p className="text-slate-400 leading-relaxed">
-            By default, NIRA runs on its high-fidelity **Trained Conversational Model** with Tamil Nadu context and safety guardrails. You can optionally connect your own free **Google Gemini API Key** for unlimited open-domain LLM generation:
+            NIRA is grounded with verified Tamil Nadu hospitals, official helplines (108, 14446), and website tools. You can customize the Google Gemini API Key below:
           </p>
           <div className="flex gap-2">
             <input
               type="password"
               value={apiKeyInput}
               onChange={(e) => setApiKeyInput(e.target.value)}
-              placeholder="Paste Google Gemini API Key (e.g. AIzaSy...)"
+              placeholder="Paste Google Gemini API Key"
               className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-teal-400 font-mono text-xs"
             />
             <button
               onClick={handleSaveApiKey}
-              className="px-4 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs shadow"
+              className="px-4 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs shadow cursor-pointer"
             >
               Save & Apply
             </button>
@@ -291,13 +470,39 @@ Whether you're looking out for a friend, feeling pressured yourself, or just wan
         {messages.map((message) => {
           const isUser = message.role === 'user'
 
+          // Contextual action checks
+          const mentionsRehab =
+            !isUser &&
+            (message.content.includes('#find-help') ||
+              message.content.toLowerCase().includes('rehab') ||
+              message.content.toLowerCase().includes('hospital') ||
+              message.content.toLowerCase().includes('center') ||
+              message.content.toLowerCase().includes('locator') ||
+              message.content.toLowerCase().includes('kilpauk') ||
+              message.content.toLowerCase().includes('ttk'))
+
+          const mentionsPrevention =
+            !isUser &&
+            (message.content.includes('#prevention') ||
+              message.content.toLowerCase().includes('clear') ||
+              message.content.toLowerCase().includes('scenario') ||
+              message.content.toLowerCase().includes('peer pressure') ||
+              message.content.toLowerCase().includes('say no'))
+
+          const mentionsLearn =
+            !isUser &&
+            (message.content.includes('#learn') ||
+              message.content.toLowerCase().includes('dopamine') ||
+              message.content.toLowerCase().includes('substance') ||
+              message.content.toLowerCase().includes('myth'))
+
           return (
             <div
               key={message.id}
               className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} space-y-2`}
             >
               <div
-                className={`flex gap-3 max-w-[92%] sm:max-w-[82%] ${
+                className={`flex gap-3 max-w-[94%] sm:max-w-[85%] ${
                   isUser ? 'flex-row-reverse' : 'flex-row'
                 }`}
               >
@@ -352,10 +557,60 @@ Whether you're looking out for a friend, feeling pressured yourself, or just wan
                     </div>
                   )}
 
-                  {/* Rendered Text */}
-                  <div className="whitespace-pre-wrap space-y-2 font-normal">
-                    {message.content}
-                  </div>
+                  {/* Formatted Content */}
+                  {isUser ? (
+                    <div className="whitespace-pre-wrap font-normal text-white">{message.content}</div>
+                  ) : (
+                    <FormattedMessage content={message.content} onNavigate={handleNavigate} />
+                  )}
+
+                  {/* Contextual Smart Action Badges */}
+                  {!isUser && (mentionsRehab || mentionsPrevention || mentionsLearn) && (
+                    <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex flex-wrap gap-2">
+                      {mentionsRehab && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleNavigate('find-help')}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/40 text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer"
+                          >
+                            <MapPin className="w-3.5 h-3.5 text-teal-400" />
+                            <span>Open Rehab Map & GPS Locator</span>
+                            <ArrowRight className="w-3 h-3 text-teal-400/80" />
+                          </button>
+                          <a
+                            href="tel:14446"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium transition-all shadow-sm"
+                          >
+                            <PhoneCall className="w-3 h-3 text-teal-400" />
+                            <span>Call Tele-MANAS (14446)</span>
+                          </a>
+                        </>
+                      )}
+                      {mentionsPrevention && (
+                        <button
+                          type="button"
+                          onClick={() => handleNavigate('prevention')}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer"
+                        >
+                          <Activity className="w-3.5 h-3.5 text-purple-400" />
+                          <span>Try Refusal Scenario Simulator</span>
+                          <ArrowRight className="w-3 h-3 text-purple-400/80" />
+                        </button>
+                      )}
+                      {mentionsLearn && (
+                        <button
+                          type="button"
+                          onClick={() => handleNavigate('learn')}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/40 text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer"
+                        >
+                          <BookOpen className="w-3.5 h-3.5 text-blue-400" />
+                          <span>Explore Substance Profiles</span>
+                          <ArrowRight className="w-3 h-3 text-blue-400/80" />
+                        </button>
+                      )}
+                    </div>
+                  )}
 
                   {/* Timestamp & Copy */}
                   <div
@@ -369,7 +624,7 @@ Whether you're looking out for a friend, feeling pressured yourself, or just wan
                     {!isUser && (
                       <button
                         onClick={() => handleCopy(message.content, message.id)}
-                        className="flex items-center gap-1 hover:text-white transition-colors"
+                        className="flex items-center gap-1 hover:text-white transition-colors cursor-pointer"
                         title="Copy message"
                       >
                         {copiedId === message.id ? (
@@ -391,12 +646,12 @@ Whether you're looking out for a friend, feeling pressured yourself, or just wan
 
               {/* Follow-up Chips */}
               {!isUser && message.suggestions && message.suggestions.length > 0 && (
-                <div className="ml-11 flex flex-wrap gap-1.5 pt-1 max-w-[85%]">
+                <div className="ml-11 flex flex-wrap gap-1.5 pt-1 max-w-[88%]">
                   {message.suggestions.map((suggestion, idx) => (
                     <button
                       key={idx}
                       onClick={() => handleSendMessage(suggestion)}
-                      className="text-xs bg-slate-900/80 hover:bg-teal-950 hover:text-teal-300 hover:border-teal-500/40 text-slate-300 px-3 py-1.5 rounded-full border border-slate-800 transition-all active:scale-95"
+                      className="text-xs bg-slate-900/80 hover:bg-teal-950 hover:text-teal-300 hover:border-teal-500/40 text-slate-300 px-3 py-1.5 rounded-full border border-slate-800 transition-all active:scale-95 cursor-pointer"
                     >
                       {suggestion}
                     </button>
@@ -440,14 +695,14 @@ Whether you're looking out for a friend, feeling pressured yourself, or just wan
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask anything confidentially... (e.g. 'I feel pressured by my friends. What should I do?')"
+            placeholder="Ask anything... (e.g. 'find me nearest rehab' or 'how to handle peer pressure')"
             className="flex-1 bg-transparent text-sm text-slate-100 placeholder-slate-500 resize-none px-2 py-1.5 focus:outline-none max-h-24"
           />
 
           <button
             type="submit"
             disabled={!input.trim() || isTyping}
-            className="p-2.5 rounded-lg bg-gradient-to-r from-teal-500 to-cyan-500 text-slate-950 hover:from-teal-400 hover:to-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-md shadow-teal-500/20 active:scale-95"
+            className="p-2.5 rounded-lg bg-gradient-to-r from-teal-500 to-cyan-500 text-slate-950 hover:from-teal-400 hover:to-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-md shadow-teal-500/20 active:scale-95 cursor-pointer"
             aria-label="Send message"
           >
             <Send className="w-4 h-4" />
@@ -461,10 +716,11 @@ Whether you're looking out for a friend, feeling pressured yourself, or just wan
             <span>Confidential awareness guide • In emergency, call 108</span>
           </div>
           <span className="hidden sm:inline text-teal-400/60 font-mono text-[10px]">
-            {isLiveAiActive ? 'Gemini 1.5 Flash Connected' : 'Trained Conversational Model'}
+            {isLiveAiActive ? 'Gemini 3.5 Flash Connected' : 'Trained Conversational Model'}
           </span>
         </div>
       </div>
     </div>
   )
 }
+

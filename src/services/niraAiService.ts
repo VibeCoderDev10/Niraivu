@@ -38,17 +38,53 @@ const RESTRICTED_KEYWORDS = [
   'good dose',
 ]
 
-const NIRA_SYSTEM_PROMPT = `You are NIRA (நிறைவு), a warm, deeply empathetic, non-judgmental awareness and recovery guide dedicated to building a Drug-Free Tamil Nadu (போதையில்லா தமிழ்நாடு).
-Your personality:
-- You speak with authentic human warmth, active listening, and gentle validation.
-- You sound like an experienced, caring college counselor or supportive mentor, not a robotic textbook or automated system.
-- You never judge, shame, scold, or lecture the user.
-- You understand student pressures in Tamil Nadu (college hostels, semester exams, campus parties, parental expectations).
-- You provide practical, memorable advice (like the CLEAR refusal technique: Calm, Look for exit, Emphatic no, Alternative, Remove).
-- You know Tamil Nadu healthcare resources (IMH Kilpauk, TTK Hospital Adyar, GRH Madurai, CMCH Coimbatore, Tele-MANAS 14446, 108 Emergency Ambulance, 104 TN Health Helpline).
-- CRITICAL SAFETY: If the user reports an overdose, unconsciousness, severe breathing trouble, or self-harm, immediately provide emergency instructions and emphasize calling 108 and 14446.
-- CRITICAL REFUSAL: Never provide instructions for buying, synthesizing, using, or concealing illegal substances.
-Keep your tone conversational, reassuring, and compassionate.`
+import { HELP_CENTERS_DATA, EMERGENCY_NUMBERS } from '../data/centersData'
+
+const GROUNDED_CENTERS_SUMMARY = HELP_CENTERS_DATA.map(
+  (c) =>
+    `• **${c.name}** (${c.district}) — *${c.category.toUpperCase()}*\n  Phone: ${c.phone} | Address: ${c.address}\n  Services: ${c.services.join(', ')}\n  Hours: ${c.hours}`
+).join('\n\n')
+
+const GROUNDED_HELPLINES_SUMMARY = EMERGENCY_NUMBERS.map(
+  (e) => `• **${e.name}**: Call **${e.number}** (${e.badge}) — ${e.description}`
+).join('\n')
+
+const NIRA_SYSTEM_PROMPT = `You are NIRA (நிறைவு), the intelligent, compassionate AI guide built specifically for the NIRAIVU platform — dedicated to Drug-Free Tamil Nadu (போதையில்லா தமிழ்நாடு).
+
+CRITICAL INSTRUCTION — YOU ARE DEEPLY INTEGRATED INTO THE NIRAIVU WEBSITE:
+You are NOT a generic chatbot. You have full awareness and direct knowledge of all pages, interactive features, and verified data of this website. You must actively reference and guide users to the website's built-in tools:
+
+1. NIRAIVU WEBSITE FEATURES & PAGES:
+- "Find Help Near Me" page ([🗺️ Open Find Help Locator](#find-help)): Has an interactive OpenStreetMap Leaflet map with a "Use My Location" GPS button that calculates exact driving distances in kilometers to the nearest de-addiction hospital in Tamil Nadu. Includes filters for Government Hospitals, De-Addiction, Rehab, and Counseling.
+- "Prevention" page ([🧪 Try Scenario Challenge](#prevention)): Features our interactive "What would you do?" scenario challenge testing hostel/party peer pressure, plus playbooks for Students, Parents, and Friends using the CLEAR refusal framework.
+- "Learn" page ([📚 Explore Substance Profiles](#learn)): Clinical profiles for 8 substance classes, neurobiology of dopamine hijack, and debunked myths vs facts.
+- "Resources" page ([📞 Helplines & Policy Resources](#resources)): Verified government links to Tele-MANAS, NIMHANS, and National Action Plan for Drug Demand Reduction.
+
+2. VERIFIED TAMIL NADU REHABILITATION & HOSPITAL DATABASE (CITE THESE EXACT DETAILS WHEN ASKED):
+${GROUNDED_CENTERS_SUMMARY}
+
+3. OFFICIAL 24/7 HELPLINES ACROSS TAMIL NADU:
+${GROUNDED_HELPLINES_SUMMARY}
+
+4. HOW TO ANSWER SPECIFIC USER REQUESTS:
+- When a user asks "find me nearest rehab", "where can I get help", "get this data", or mentions a Tamil Nadu city/district:
+  1. Highlight our interactive map right on this website: "[🗺️ Open Find Help Locator](#find-help) — you can tap the **'Use My Location'** GPS button on our map to see exact driving distances in kilometers to the nearest verified centers in Tamil Nadu!"
+  2. Provide the verified facilities from our database above for their district (or prominent government and non-profit centers across Chennai, Coimbatore, Madurai, Trichy, Salem, Tirunelveli, etc.) with real phone numbers, addresses, and service types.
+  3. Remind them of 24/7 free Tele-MANAS (**14446**) and 108 Emergency Ambulance.
+- When a user asks "get this data", "show data", or "list all centers":
+  1. Provide the structured list of verified centers grouped by district with phones and addresses.
+  2. Direct them to the interactive map at [🗺️ Open Find Help Locator](#find-help).
+- When a user asks about peer pressure or how to say no:
+  1. Teach the CLEAR framework (*Calm, Look for exit, Emphatic no, Alternative, Remove*).
+  2. Direct them: "You can also test your real-world reactions on our interactive **[🧪 What Would You Do? Scenario Challenge](#prevention)** on the Prevention page!"
+- When a user asks about risks or substances:
+  1. Explain the neurobiology (dopamine receptor downregulation).
+  2. Direct them to explore clinical profiles at **[📚 View Substance Profiles](#learn)**.
+- When a user is in crisis or emergency:
+  1. Tell them to immediately dial **108** or **14446**.
+  2. Give clear recovery position instructions.
+
+Tone: Warm, empathetic, human, conversational, reassuring. Speak like an understanding mentor or senior counselor in Tamil Nadu with zero judgment. Always ground your replies in NIRAIVU's verified tools and Tamil Nadu resources.`
 
 /**
  * Calls live Google Gemini API with real-time SSE streaming for instant responses
@@ -59,16 +95,7 @@ async function callGeminiApi(
   apiKey: string,
   onChunk?: (streamedText: string) => void
 ): Promise<string> {
-  const contents = [
-    {
-      role: 'user',
-      parts: [{ text: `${NIRA_SYSTEM_PROMPT}\n\nPlease respond to the user as NIRA.` }],
-    },
-    {
-      role: 'model',
-      parts: [{ text: `Vanakkam! I understand my role as NIRA. I am ready to speak with warmth, empathy, and practical guidance.` }],
-    },
-  ]
+  const contents: { role: string; parts: { text: string }[] }[] = []
 
   // Add last 6 turns of conversation history
   const recentHistory = history.slice(-6)
@@ -94,10 +121,13 @@ async function callGeminiApi(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      systemInstruction: {
+        parts: [{ text: NIRA_SYSTEM_PROMPT }],
+      },
       contents,
       generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 800,
+        temperature: 0.6,
+        maxOutputTokens: 1000,
       },
     }),
   })
@@ -430,42 +460,61 @@ Are you noticing some of these signs in yourself, or in a friend or family membe
     }
   }
 
-  // Finding Care in Tamil Nadu
+  // Finding Care in Tamil Nadu & Center Data Queries
   if (
     query.includes('center') ||
     query.includes('rehab') ||
     query.includes('hospital') ||
     query.includes('near me') ||
+    query.includes('nearest') ||
+    query.includes('data') ||
     query.includes('tamil nadu') ||
     query.includes('chennai') ||
     query.includes('madurai') ||
     query.includes('coimbatore') ||
     query.includes('trichy') ||
-    query.includes('doctor')
+    query.includes('doctor') ||
+    query.includes('where can i get help')
   ) {
     return {
       isEmergency: false,
-      content: `Tamil Nadu actually has some of the finest, most compassionate government and recognized de-addiction facilities in India:
+      content: `I am right here with you, and you can get certified, compassionate medical care across Tamil Nadu immediately.
 
-🏛️ **Leading Verified Centers:**
-- **Chennai:** Institute of Mental Health (IMH), Kilpauk — 044-26420556 *(24/7 dedicated govt inpatient & detox care)*
-- **Chennai:** TTK Hospital, Adyar — 044-24912950 *(India's premier non-profit residential recovery center)*
-- **Coimbatore:** CMCH Hospital De-Addiction Unit — 0422-2301393
-- **Madurai:** Government Rajaji Hospital Psychiatry Unit — 0452-2532535
-- **Tiruchirappalli:** KAP Viswanathan Govt Medical College — 0431-2415511
-- **Salem:** Govt Mohan Kumaramangalam Medical College — 0427-2211212
-- **Tirunelveli:** TVMCH Hospital, Palayamkottai — 0462-2572733
+To find the closest certified center with exact driving distance in kilometers from your exact GPS location, click our interactive map feature right now:
 
-📞 **Statewide 24/7 Toll-Free Hotlines:**
+👉 **[🗺️ Open Find Help Locator](#find-help)** *(Tap **"Use My Location"** on our interactive map for real-time distance calculation!)*
+
+Here is our verified directory of trusted de-addiction hospitals and facilities across Tamil Nadu:
+
+### 🏥 Verified Tamil Nadu Treatment Centers
+- **Chennai:** **Institute of Mental Health (IMH), Kilpauk** — 📞 044-26420556  
+  *Address:* Medavakkam Tank Road, Kilpauk, Chennai 600010  
+  *Care:* 24/7 dedicated govt inpatient detoxification & psychiatric emergency.
+- **Chennai:** **TTK Hospital, Adyar** — 📞 044-24912950  
+  *Address:* 4th Main Road, Indira Nagar, Adyar, Chennai 600020  
+  *Care:* India's premier non-profit residential recovery center & family therapy.
+- **Coimbatore:** **CMCH De-Addiction Unit** — 📞 0422-2301393  
+  *Address:* Trichy Road, Gopalapuram, Coimbatore 641018 (Govt Hospital)
+- **Coimbatore:** **PSG Institute of Medical Sciences** — 📞 0422-2570170  
+  *Address:* Avinashi Road, Peelamedu, Coimbatore 641004
+- **Madurai:** **Government Rajaji Hospital** — 📞 0452-2532535  
+  *Address:* Panagal Road, Shenoy Nagar, Madurai 625020 (Govt Hospital)
+- **Tiruchirappalli:** **KAP Viswanathan Govt Medical College** — 📞 0431-2415511  
+  *Address:* Collector Office Road, Cantonment, Trichy 620001
+- **Salem:** **Govt Mohan Kumaramangalam Medical College** — 📞 0427-2211212  
+  *Address:* Steel Plant Road, Salem 636030
+- **Tirunelveli:** **TVMCH Hospital, Palayamkottai** — 📞 0462-2572733  
+  *Address:* High Ground Road, Palayamkottai, Tirunelveli 627011
+
+### 📞 24/7 Free Helplines Across Tamil Nadu:
 - **Tele-MANAS (Mental Health & Counseling):** **14446** *(Toll-Free, Tamil & English, 24/7)*
-- **TN Health Helpline:** **104**
-- **Emergency Ambulance:** **108**
+- **Tamil Nadu Health Helpline:** **104**
+- **Emergency Medical Ambulance:** **108**
 
-You can also head over to our **Find Help Near Me** page on this site—it has an interactive map with distances from your location! 
-
-Which district are you in right now? I can tell you the closest place.`,
+Which district are you currently in? I can guide you to the exact closest facility!`,
       suggestions: [
-        'Go to Find Help locator map',
+        'Open Find Help locator map',
+        'Call 14446 Tele-MANAS',
         'What happens when you visit a de-addiction ward?',
         'Is government treatment free in Tamil Nadu?',
       ],
